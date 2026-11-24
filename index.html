@@ -1,0 +1,844 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body style="margin:0">
+<title>MRA Colorization Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap">
+<style>
+/* Layout: radiology reading-room workstation — controls band on top, the image as the hero on the left, linked plots and live metrics in a right rail. */
+:root{
+  --bg:#eef1f3; --panel:#ffffff; --ink:#15202a; --muted:#5b6873; --line:#d5dce1;
+  --accent:#0b7f8c; --accent-soft:#d8eef0; --viewer:#05080b; --warn:#b45309;
+  --r:#d63a3a; --g:#2f9e57; --b:#2f6fd6;
+  --f-display:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0d1216; --panel:#151c22; --ink:#e4eaee; --muted:#95a3ad; --line:#26313a;
+  --accent:#3cc3cf; --accent-soft:#14363a; --viewer:#000000; --warn:#f0a447;
+  --r:#ff6b6b; --g:#5fd38a; --b:#6ea4ff; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d1216; --panel:#151c22; --ink:#e4eaee; --muted:#95a3ad; --line:#26313a;
+  --accent:#3cc3cf; --accent-soft:#14363a; --viewer:#000000; --warn:#f0a447;
+  --r:#ff6b6b; --g:#5fd38a; --b:#6ea4ff; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45}
+.wrap{max-width:1320px;margin:0 auto;padding-block:20px 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;gap:16px 32px;align-items:flex-start;justify-content:space-between}
+h1{font-family:var(--f-display);font-weight:600;font-size:26px;letter-spacing:.2px;margin:0;text-wrap:balance}
+.lede{margin:4px 0 0;color:var(--muted);max-width:62ch}
+.presets{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+button,select{font:inherit;color:inherit}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:6px 10px;cursor:pointer}
+.chip:hover{border-color:var(--accent)}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;min-width:0}
+.panel h2{font-family:var(--f-display);font-size:15px;font-weight:600;margin:0 0 8px;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.ctl .label{text-transform:none;letter-spacing:.01em;font-size:12.5px;color:var(--ink);font-weight:500}
+.panel h2 small{font-family:var(--f-body);font-weight:400;font-size:12px;color:var(--muted)}
+.controls{display:grid;grid-template-columns:minmax(200px,1.1fr) repeat(5,minmax(150px,1fr));gap:12px 20px;align-items:end}
+.ctl{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ctl .row{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.ctl output{font-family:var(--f-mono);font-size:13px;font-variant-numeric:tabular-nums}
+.ctl.off{opacity:.38}
+input[type=range]{width:100%;accent-color:var(--accent)}
+select{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%}
+.hint{font-size:12px;color:var(--muted)}
+.main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px;align-items:start}
+.viewer{background:var(--viewer);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px;border:1px solid var(--line)}
+.viewer-top{display:flex;flex-wrap:wrap;gap:8px 16px;justify-content:space-between;align-items:center;color:#c9d3da}
+.viewer-top .label{color:#8fa0ab}
+.viewer canvas#img{width:100%;max-width:100%;aspect-ratio:1/1;image-rendering:pixelated;display:block;border-radius:4px;background:#000;cursor:crosshair}
+.seg{display:inline-flex;border:1px solid #33414b;border-radius:6px;overflow:hidden}
+.seg button{background:transparent;border:0;color:#c9d3da;padding:5px 10px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:#1f3a40;color:#fff}
+.wincontrols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:8px 14px;align-items:end;color:#c9d3da}
+.wincontrols .ctl .label{color:#c9d3da}
+.chk{display:flex;gap:6px;align-items:center;font-size:12.5px;color:#c9d3da;padding-bottom:6px}
+.chk input{accent-color:var(--accent)}
+.chk.off{opacity:.4}
+.wincontrols output{color:#dbe4ea}
+select.dark,.chip.dark{background:#0f171c;border-color:#33414b;color:#dbe4ea}
+@media (max-width:560px){.wincontrols{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.vfoot{display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:space-between;color:#8fa0ab;font-size:12px}
+.vfoot b{color:#dbe4ea;font-weight:500}
+.rail{display:flex;flex-direction:column;gap:16px;min-width:0}
+.plot{width:100%;height:auto;display:block}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.metric{border-top:2px solid var(--line);padding-top:6px;display:flex;flex-direction:column;gap:2px}
+.metric .v{font-family:var(--f-mono);font-size:20px;font-variant-numeric:tabular-nums}
+.metric .d{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.metric.warn{border-top-color:var(--warn)}
+.metric.good{border-top-color:var(--accent)}
+body.studying section[aria-label="Parameters"], body.studying .rail > section:not(#study), body.studying .load-panel, body.studying footer,
+body.studying .viewer-top, body.studying .wincontrols, body.studying .presets .chip:not(#study-exit), body.studying .presets .label, body.studying .vfoot{display:none}
+.study{display:flex;flex-direction:column;gap:12px}
+.study .seg button{color:var(--ink);background:var(--panel);border:0;border-radius:0}
+.study .seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.study-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.study h3{font-family:var(--f-display);font-size:18px;font-weight:600;margin:0;text-wrap:balance}
+.study p{margin:0;max-width:62ch}
+.study .q{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:10px}
+.study .q > span,.study .q > label{font-weight:500}
+.scale{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.scale label,.opts label{display:flex;flex-direction:column;align-items:center;gap:2px;border:1px solid var(--line);border-radius:6px;padding:6px 4px;cursor:pointer;font-size:12px;text-align:center}
+.opts{display:flex;flex-wrap:wrap;gap:6px}
+.opts label{flex-direction:row;padding:6px 10px}
+.scale input,.opts input{accent-color:var(--accent)}
+.scale label:has(input:checked),.opts label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.scale-ends{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+.study textarea,.study input[type=text]{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px;width:100%}
+.study textarea{min-height:70px;resize:vertical}
+.primary{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:9px 16px;font-weight:600;cursor:pointer;align-self:flex-start}
+.primary:disabled{opacity:.45;cursor:not-allowed}
+.row-btns{display:flex;flex-wrap:wrap;gap:8px}
+.note{font-size:12px;color:var(--muted)}
+.admin{border:1px dashed var(--line);border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.load{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.load input[type=file]{max-width:100%}
+footer{color:var(--muted);font-size:12px;max-width:110ch}
+footer code{font-family:var(--f-mono);font-size:11.5px}
+@media (max-width:1100px){.controls{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:860px){.main{grid-template-columns:1fr}}
+@media (max-width:560px){.controls{grid-template-columns:repeat(2,minmax(0,1fr))}h1{font-size:22px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>MRA Colorization Explorer</h1>
+      <p class="lede">How the vessel-restricted cosine colorization adds chroma to a TOF-MRA image, and what each parameter costs in vessel separation, order reversal and luminance contrast.</p>
+    </div>
+    <div class="presets" role="group" aria-label="Presets">
+      <span class="label">Presets</span>
+      <button class="chip" data-preset="default" id="p-default">Default (α 0.1)</button>
+      <button class="chip" data-preset="tuned" id="p-tuned">Tuned benchmark</button>
+      <button class="chip" data-preset="efficient" id="p-efficient">Efficient soft weight</button>
+      <button class="chip" data-preset="comp" id="p-comp">Luminance-compensated</button>
+      <button class="chip study-btn" id="study-open" type="button">User study</button>
+    </div>
+  </header>
+
+  <section class="panel" aria-label="Parameters">
+    <div class="controls">
+      <div class="ctl">
+        <label class="label" for="method">Color mapping</label>
+        <select id="method">
+          <option value="gray">Grayscale</option>
+          <option value="prop" selected>Proposed: vessel-restricted cosine</option>
+          <option value="comp">Proposed, luminance-compensated</option>
+          <option value="heat">Restricted PL heat</option>
+          <option value="fcos">Restricted full cosine</option>
+        </select>
+      </div>
+      <div class="ctl" id="c-alpha"><div class="row"><label class="label" for="alpha" id="alpha-lab">Strength α</label><output id="o-alpha"></output></div><input type="range" id="alpha" min="0" max="1" step="0.01"></div>
+      <div class="ctl" id="c-f"><div class="row"><label class="label" for="f">Frequency f</label><output id="o-f"></output></div><input type="range" id="f" min="1" max="24" step="1"></div>
+      <div class="ctl" id="c-phi"><div class="row"><label class="label" for="phi">Phase φ</label><output id="o-phi"></output></div><input type="range" id="phi" min="0" max="24" step="1"></div>
+      <div class="ctl" id="c-gw"><div class="row"><label class="label" for="gw">Weight exponent γ<sub>w</sub></label><output id="o-gw"></output></div><input type="range" id="gw" min="0.25" max="3" step="0.05"></div>
+      <div class="ctl" id="c-sm"><div class="row"><label class="label" for="sm">Weight blur σ<sub>m</sub></label><output id="o-sm"></output></div><input type="range" id="sm" min="0" max="3" step="0.1"></div>
+    </div>
+  </section>
+
+  <div class="main">
+    <section class="viewer" aria-label="Image">
+      <div class="viewer-top">
+        <div class="ctl" style="min-width:220px;flex:1">
+          <label class="label" for="dataset">Image</label>
+          <select id="dataset" style="background:#0f171c;border-color:#33414b;color:#dbe4ea"></select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span class="label">View</span>
+          <div class="seg" role="group" aria-label="View">
+            <button id="v-color" aria-pressed="true">Color</button>
+            <button id="v-split" aria-pressed="false">Split</button>
+            <button id="v-gray" aria-pressed="false">Grayscale</button>
+          </div>
+        </div>
+      </div>
+      <div class="wincontrols">
+        <div class="ctl"><div class="row"><label class="label" for="wl">Window level</label><output id="o-wl"></output></div><input type="range" id="wl" min="0.1" max="0.9" step="0.01" value="0.5"></div>
+        <div class="ctl"><div class="row"><label class="label" for="ww">Window width</label><output id="o-ww"></output></div><input type="range" id="ww" min="0.2" max="1.6" step="0.01" value="1"></div>
+        <div class="ctl"><label class="label" for="zoom">Zoom</label><select id="zoom" class="dark"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></div>
+        <button class="chip dark" id="w-reset" type="button">Reset view</button>
+        <div class="ctl"><div class="row"><label class="label" for="minfrag">Remove mask fragments under</label><output id="o-minfrag"></output></div><input type="range" id="minfrag" min="0" max="40" step="1" value="0"></div>
+        <label class="chk" for="showL"><input type="checkbox" id="showL"> Show aneurysm label</label>
+      </div>
+      <canvas id="img" width="256" height="256" aria-label="Colorized MRA image"></canvas>
+      <div class="vfoot"><span id="dsinfo"></span><span>Click the image to zoom there · Split: left half grayscale</span></div>
+    </section>
+
+    <div class="rail">
+      <section class="panel study" id="study" hidden aria-live="polite">
+        <div class="study-head"><span class="label" id="st-progress"></span><button class="chip" id="study-exit" type="button">Leave study</button></div>
+        <div id="st-body" class="study"></div>
+      </section>
+      <section class="panel">
+        <h2>Live metrics <small>vessel voxels vs local ring · grayscale in grey</small></h2>
+        <div class="metrics" id="metrics"></div>
+      </section>
+      <section class="panel">
+        <h2 id="curve-title">Hue vs vesselness</h2>
+        <canvas id="curve" class="plot" width="560" height="230" aria-label="Color channels against vesselness"></canvas>
+        <p class="hint" id="curve-hint"></p>
+      </section>
+      <section class="panel">
+        <h2>Separation vs reversal <small>α swept 0–1 at the current settings</small></h2>
+        <canvas id="trade" class="plot" width="560" height="230" aria-label="Delta E d prime against vessel order inversion"></canvas>
+        <p class="hint">Each dot is one α; the ringed dot is the current setting. Up and to the left is better: more vessel separation for less reversal of the grayscale intensity order.</p>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel load-panel">
+    <h2>Load your own slices <small>from the export cell of the notebook</small></h2>
+    <div class="load">
+      <input type="file" id="files" multiple accept=".png,image/png">
+      <span class="hint">Select the PNG files from <code>explorer_export</code>: each slice needs <code>…_I.png</code> (normalized image), <code>…_S.png</code> (vesselness) and <code>…_M.png</code> (vessel mask). The files stay in your browser.</span>
+    </div>
+  </section>
+
+  <footer>
+    The built-in real examples are two axial slices of ICBM MRA volume BG0006 (healthy; a held-out volume of the benchmark) and two aneurysm cases from the Lausanne TOF-MRA cohort (OpenNeuro ds003949; slice and thin slab MIP through the aneurysm, with the dataset's aneurysm label as an optional yellow outline), all exported with the paper's own normalization, vesselness and vessel mask; they open with a wider display window (level 0.6, width 1.4) so that the brightest vessels are not clipped. The synthetic phantom has a circle-of-Willis-like vessel tree and one saccular aneurysm (low vesselness, so it takes a different hue). Metrics follow the paper in 2-D: ΔE d′ uses CIE76 distances to the mean ring color; vessel order inversion is the share of 20,000 sampled vessel-voxel pairs whose Rec.&nbsp;709 luminance order disagrees with the grayscale order; local contrast is mean vessel luminance minus mean ring luminance; visible color is the share of vessel voxels with C* above 2.3 CIELAB units on a calibrated sRGB display. The soft weight is smoothed within the slice, whereas the paper smooths in 3-D.
+  </footer>
+</div>
+
+<script>
+(() => {
+"use strict";
+const PI = Math.PI;
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+/* ---------- seeded random ---------- */
+function rng(seed){ let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function gauss(r){ let u = 0, v = 0; while (u === 0) u = r(); v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * PI * v); }
+
+/* ---------- synthetic phantom ---------- */
+function makePhantom(){
+  const N = 256, I = new Float32Array(N * N), S = new Float32Array(N * N), M = new Uint8Array(N * N);
+  const R = rng(7);
+  const cx = 128, cy = 132;
+  const paths = [];
+  const add = (pts, r, b) => paths.push({pts, r, b, s: 0.35 + 0.65 * R() * R()});
+  const wig = (x0, y0, x1, y1, amp, n = 14, ph = R() * 6) => {
+    const pts = [];
+    for (let i = 0; i <= n; i++) { const t = i / n, nx = -(y1 - y0), ny = x1 - x0, L = Math.hypot(nx, ny) || 1;
+      const w = amp * Math.sin(t * PI * 2.2 + ph) * Math.sin(t * PI);
+      pts.push([x0 + (x1 - x0) * t + w * nx / L, y0 + (y1 - y0) * t + w * ny / L]); }
+    return pts;
+  };
+  // circle of Willis ring
+  const ring = []; for (let k = 0; k <= 12; k++) { const a = k / 12 * 2 * PI; ring.push([cx + 15 * Math.cos(a), cy + 12 * Math.sin(a)]); }
+  add(ring, 1.7, 0.88);
+  // ICA / basilar inputs, ACA, MCA, PCA
+  add(wig(cx - 12, cy + 10, cx - 20, cy + 30, 2), 2.2, 0.95);
+  add(wig(cx + 12, cy + 10, cx + 20, cy + 30, 2), 2.2, 0.95);
+  add(wig(cx, cy + 12, cx, cy + 40, 1.5), 2.0, 0.9);
+  add(wig(cx - 6, cy - 11, cx - 10, cy - 80, 4), 1.6, 0.85);
+  add(wig(cx + 6, cy - 11, cx + 10, cy - 80, 4), 1.6, 0.85);
+  const mcaL = wig(cx - 15, cy - 2, cx - 70, cy - 14, 5), mcaR = wig(cx + 15, cy - 2, cx + 72, cy - 10, 5);
+  add(mcaL, 2.1, 0.93); add(mcaR, 2.1, 0.93);
+  add(wig(cx - 12, cy + 8, cx - 55, cy + 55, 6), 1.5, 0.82);
+  add(wig(cx + 12, cy + 8, cx + 55, cy + 55, 6), 1.5, 0.82);
+  // MCA / ACA / PCA branches
+  const branch = (base, n, len, r, b) => { for (let i = 0; i < n; i++) { const p = base[Math.floor((0.3 + 0.7 * R()) * (base.length - 1))];
+      const a = R() * 2 * PI; add(wig(p[0], p[1], p[0] + len * (0.6 + 0.6 * R()) * Math.cos(a), p[1] + len * (0.6 + 0.6 * R()) * Math.sin(a), 3, 10), r * (0.75 + 0.5 * R()), b * (0.8 + 0.25 * R())); } };
+  branch(mcaL, 8, 34, 0.95, 0.42); branch(mcaR, 8, 34, 0.95, 0.42);
+  branch(paths[4].pts, 4, 26, 0.85, 0.4); branch(paths[5].pts, 4, 26, 0.85, 0.4);
+  branch(paths[9].pts, 4, 24, 0.85, 0.38); branch(paths[10].pts, 4, 24, 0.85, 0.38);
+  // tissue
+  const tex = (x, y) => 0.025 * Math.sin(x * 0.11 + 1.3) * Math.cos(y * 0.09) + 0.018 * Math.sin((x + y) * 0.23) + 0.012 * Math.cos(x * 0.41 - y * 0.37);
+  const vP = new Float32Array(N * N), vS = new Float32Array(N * N), vB = new Float32Array(N * N);
+  for (const p of paths) {
+    const pts = p.pts, sig = Math.max(0.6, p.r * 0.62);
+    let minx = 1e9, maxx = -1e9, miny = 1e9, maxy = -1e9;
+    for (const q of pts) { minx = Math.min(minx, q[0]); maxx = Math.max(maxx, q[0]); miny = Math.min(miny, q[1]); maxy = Math.max(maxy, q[1]); }
+    const pad = Math.ceil(sig * 3.5) + 1;
+    for (let y = Math.max(0, Math.floor(miny - pad)); y <= Math.min(N - 1, Math.ceil(maxy + pad)); y++)
+      for (let x = Math.max(0, Math.floor(minx - pad)); x <= Math.min(N - 1, Math.ceil(maxx + pad)); x++) {
+        let d2 = 1e9;
+        for (let k = 0; k < pts.length - 1; k++) { const [ax, ay] = pts[k], [bx, by] = pts[k + 1], vx = bx - ax, vy = by - ay;
+          const t = Math.max(0, Math.min(1, ((x - ax) * vx + (y - ay) * vy) / (vx * vx + vy * vy || 1)));
+          const dx = x - ax - t * vx, dy = y - ay - t * vy; d2 = Math.min(d2, dx * dx + dy * dy); }
+        const prof = Math.exp(-d2 / (2 * sig * sig)), i = y * N + x;
+        if (prof > vP[i]) { vP[i] = prof; vB[i] = p.b; vS[i] = Math.pow(prof, 3) * p.s; }
+      }
+  }
+  // saccular aneurysm at the right MCA bifurcation: bright blob, low vesselness
+  const ax = mcaR[6][0] + 2, ay = mcaR[6][1] - 7, ar = 5.2;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const d = Math.hypot(x - ax, y - ay), prof = 1 / (1 + Math.exp((d - ar) / 0.9)), i = y * N + x;
+    if (prof > vP[i]) { vP[i] = prof; vB[i] = 0.9 - 0.12 * (d / ar); vS[i] = prof * (0.12 + 0.18 * Math.min(1, d / ar)); }
+  }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = y * N + x, ex = (x - cx) / 112, ey = (y - 128) / 122, rr = ex * ex + ey * ey;
+    let base;
+    if (rr > 1.12) base = 0.015;
+    else if (rr > 1.0) base = 0.13 + 0.05 * Math.sin(x * 0.3);
+    else base = 0.2 + tex(x, y) + 0.04 * (1 - rr);
+    let v = base + (vB[i] - base) * vP[i] * (rr <= 1.0 ? 1 : 0);
+    v += 0.03 * gauss(R);
+    I[i] = Math.min(1, Math.max(0, v));
+    S[i] = Math.min(1, Math.max(0, (rr <= 1.0 ? vS[i] : 0) + 0.02 * Math.abs(gauss(R))));
+    M[i] = (vP[i] > 0.2 && rr <= 1.0) ? 1 : 0;
+  }
+  return {name: "Synthetic phantom (example)", w: N, h: N, I, S, M};
+}
+
+/* ---------- dataset preparation ---------- */
+function cleanMask(M0, w, h, minSize){
+  if (!minSize) return M0.slice();
+  const M = M0.slice(), seen = new Uint8Array(M.length), stack = [], comp = [];
+  for (let s0 = 0; s0 < M.length; s0++) {
+    if (!M0[s0] || seen[s0]) continue;
+    stack.length = 0; comp.length = 0; stack.push(s0); seen[s0] = 1;
+    while (stack.length) { const i = stack.pop(); comp.push(i); const x = i % w, y = (i - x) / w;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue; const j = yy * w + xx; if (M0[j] && !seen[j]) { seen[j] = 1; stack.push(j); } } }
+    if (comp.length < minSize) for (const i of comp) M[i] = 0;
+  }
+  return M;
+}
+function prepare(ds){
+  if (!ds.M0) ds.M0 = ds.M.slice();
+  ds.M = cleanMask(ds.M0, ds.w, ds.h, state.minFrag || 0); ds.prepFrag = state.minFrag || 0;
+  if (ds.L && !ds.Ledge) { const e = new Uint8Array(ds.L.length); for (let y = 0; y < ds.h; y++) for (let x = 0; x < ds.w; x++) { const i = y * ds.w + x; if (!ds.L[i]) continue;
+      if (x === 0 || y === 0 || x === ds.w - 1 || y === ds.h - 1 || !ds.L[i - 1] || !ds.L[i + 1] || !ds.L[i - ds.w] || !ds.L[i + ds.w]) e[i] = 1; } ds.Ledge = e; }
+  const {w, h, M} = ds, n = w * h;
+  const vessel = [], dil = new Uint8Array(n);
+  for (let i = 0; i < n; i++) if (M[i]) vessel.push(i);
+  // two 3x3 dilation steps -> ring = dilated minus mask
+  let cur = M.slice();
+  for (let s = 0; s < 2; s++) { const nx = cur.slice();
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (cur[i]) continue;
+      for (let dy = -1; dy <= 1 && !nx[i]; dy++) for (let dx = -1; dx <= 1; dx++) { const yy = y + dy, xx = x + dx;
+        if (yy >= 0 && yy < h && xx >= 0 && xx < w && cur[yy * w + xx]) { nx[i] = 1; break; } } }
+    cur = nx; }
+  const ringIdx = []; for (let i = 0; i < n; i++) if (cur[i] && !M[i]) ringIdx.push(i);
+  // vesselness normalized over the mask (Eq. 2)
+  let lo = Infinity, hi = -Infinity; for (const i of vessel) { lo = Math.min(lo, ds.S[i]); hi = Math.max(hi, ds.S[i]); }
+  const Sn = new Float32Array(n); const span = hi > lo ? hi - lo : 1;
+  for (let i = 0; i < n; i++) Sn[i] = Math.min(1, Math.max(0, (ds.S[i] - lo) / span));
+  // sampled vessel pairs with different grayscale intensity
+  const R = rng(11), pa = [], pb = [];
+  if (vessel.length > 1) for (let k = 0, tries = 0; k < 20000 && tries < 200000; tries++) {
+    const a = vessel[Math.floor(R() * vessel.length)], b = vessel[Math.floor(R() * vessel.length)];
+    if (ds.I[a] === ds.I[b]) continue;
+    if (ds.I[a] > ds.I[b]) { pa.push(a); pb.push(b); } else { pa.push(b); pb.push(a); } k++; }
+  ds.vessel = Int32Array.from(vessel); ds.ring = Int32Array.from(ringIdx); ds.Sn = Sn;
+  ds.pa = Int32Array.from(pa); ds.pb = Int32Array.from(pb); ds.wcache = new Map();
+  ds.grayRGB = null; ds.base = null; ds._wKey = null;
+  return ds;
+}
+
+/* ---------- soft weight W = blur(M * Sn^gw, sm) ---------- */
+function softWeight(ds, gw, sm){
+  const key = gw.toFixed(2) + "|" + sm.toFixed(1);
+  if (ds.wcache.has(key)) return ds.wcache.get(key);
+  const {w, h, M, Sn} = ds, n = w * h, W0 = new Float32Array(n);
+  for (let i = 0; i < n; i++) W0[i] = M[i] ? Math.pow(Sn[i], gw) : 0;
+  let W = W0;
+  if (sm > 0.05) {
+    const rad = Math.ceil(sm * 3), k = []; let s = 0;
+    for (let d = -rad; d <= rad; d++) { const v = Math.exp(-d * d / (2 * sm * sm)); k.push(v); s += v; }
+    for (let j = 0; j < k.length; j++) k[j] /= s;
+    const tmp = new Float32Array(n); W = new Float32Array(n);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let a = 0;
+      for (let d = -rad; d <= rad; d++) { const xx = Math.min(w - 1, Math.max(0, x + d)); a += k[d + rad] * W0[y * w + xx]; } tmp[y * w + x] = a; }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let a = 0;
+      for (let d = -rad; d <= rad; d++) { const yy = Math.min(h - 1, Math.max(0, y + d)); a += k[d + rad] * tmp[yy * w + x]; } W[y * w + x] = a; }
+  }
+  if (ds.wcache.size > 24) ds.wcache.clear();
+  ds.wcache.set(key, W);
+  return W;
+}
+
+/* ---------- color mappings ---------- */
+const WY = [0.2126, 0.7152, 0.0722];
+const heat = t => t < 1 / 3 ? [3 * t, 0, 0] : t < 2 / 3 ? [1, 3 * t - 1, 0] : [1, 1, Math.min(1, 3 * t - 2)];
+function winKey(){ return state.win.L.toFixed(2) + "|" + state.win.W.toFixed(2); }
+function winI(ds){
+  const key = winKey(); if (ds._wKey === key) return ds._wI;
+  const lo = state.win.L - state.win.W / 2, n = ds.w * ds.h, a = new Float32Array(n);
+  for (let i = 0; i < n; i++) a[i] = Math.min(1, Math.max(0, (ds.I[i] - lo) / state.win.W));
+  ds._wKey = key; ds._wI = a; ds.base = null; return a;
+}
+function colorize(ds, p, alphaOverride){
+  const {w, h} = ds, I = winI(ds), n = w * h, out = new Float32Array(n * 3);
+  const a = alphaOverride ?? p.alpha;
+  if (p.method === "gray" || a === 0) { for (let i = 0; i < n; i++) out[3 * i] = out[3 * i + 1] = out[3 * i + 2] = I[i]; return out; }
+  const W = softWeight(ds, p.gw, p.sm), th = [0, p.phi / 2, p.phi];
+  for (let i = 0; i < n; i++) {
+    const v = I[i], wi = W[i];
+    if (wi < 1e-5) { out[3 * i] = out[3 * i + 1] = out[3 * i + 2] = v; continue; }
+    let r, g, b;
+    if (p.method === "prop" || p.method === "comp") {
+      const s = ds.Sn[i];
+      let c0 = Math.cos(2 * p.f * s + th[0]), c1 = Math.cos(2 * p.f * s + th[1]), c2 = Math.cos(2 * p.f * s + th[2]);
+      const m = (c0 + c1 + c2) / 3; c0 -= m; c1 -= m; c2 -= m;
+      r = v + a * wi * c0; g = v + a * wi * c1; b = v + a * wi * c2;
+      if (p.method === "comp") { const dY = a * wi * (WY[0] * c0 + WY[1] * c1 + WY[2] * c2); r -= dY; g -= dY; b -= dY; }
+    } else {
+      const C = p.method === "heat" ? heat(v) : [0, 1, 2].map(j => 0.5 + 0.5 * Math.cos(2 * p.f * v + th[j]));
+      r = v + a * wi * (C[0] - v); g = v + a * wi * (C[1] - v); b = v + a * wi * (C[2] - v);
+    }
+    out[3 * i] = Math.min(1, Math.max(0, r)); out[3 * i + 1] = Math.min(1, Math.max(0, g)); out[3 * i + 2] = Math.min(1, Math.max(0, b));
+  }
+  return out;
+}
+
+/* ---------- metrics ---------- */
+const lin = c => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+const fl = t => t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116;
+function lab(r, g, b){ r = lin(r); g = lin(g); b = lin(b);
+  const X = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047, Y = 0.2126 * r + 0.7152 * g + 0.0722 * b, Z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+  const fx = fl(X), fy = fl(Y), fz = fl(Z); return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)]; }
+function stats(arr){ let m = 0; for (const v of arr) m += v; m /= arr.length || 1; let s = 0; for (const v of arr) s += (v - m) * (v - m); return [m, s / Math.max(1, arr.length - 1)]; }
+function metrics(ds, rgb){
+  const V = ds.vessel, Rg = ds.ring, Y = i => WY[0] * rgb[3 * i] + WY[1] * rgb[3 * i + 1] + WY[2] * rgb[3 * i + 2];
+  const labV = Array.from(V, i => lab(rgb[3 * i], rgb[3 * i + 1], rgb[3 * i + 2]));
+  const labR = Array.from(Rg, i => lab(rgb[3 * i], rgb[3 * i + 1], rgb[3 * i + 2]));
+  const mr = [0, 0, 0]; for (const q of labR) { mr[0] += q[0]; mr[1] += q[1]; mr[2] += q[2]; } for (let j = 0; j < 3; j++) mr[j] /= labR.length || 1;
+  const dE = q => Math.hypot(q[0] - mr[0], q[1] - mr[1], q[2] - mr[2]);
+  const [mv, vv] = stats(labV.map(dE)), [mR, vR] = stats(labR.map(dE));
+  const dprime = Math.abs(mv - mR) / Math.sqrt(0.5 * (vv + vR) + 1e-12);
+  let inv = 0; for (let k = 0; k < ds.pa.length; k++) if (Y(ds.pa[k]) < Y(ds.pb[k]) - 1e-9) inv++;
+  let yv = 0, yr = 0; for (const i of V) yv += Y(i); for (const i of Rg) yr += Y(i);
+  let vis = 0, clip = 0, chroma = 0;
+  labV.forEach((q, k) => { const c = Math.hypot(q[1], q[2]); chroma += c; if (c > 2.3) vis++;
+    const i = V[k]; if (rgb[3 * i] <= 0 || rgb[3 * i] >= 1 || rgb[3 * i + 1] <= 0 || rgb[3 * i + 1] >= 1 || rgb[3 * i + 2] <= 0 || rgb[3 * i + 2] >= 1) clip++; });
+  const nV = V.length || 1;
+  return {dprime, inv: inv / (ds.pa.length || 1), contrast: yv / nV - yr / (Rg.length || 1), vis: vis / nV, chroma: chroma / nV, clip: clip / nV};
+}
+
+/* ---------- state ---------- */
+const PRESETS = {
+  default:   {method: "prop", alpha: 0.10, f: 4, phi: 8,  gw: 1.5,  sm: 1.0},
+  tuned:     {method: "prop", alpha: 0.50, f: 18, phi: 16, gw: 1.5, sm: 1.0},
+  efficient: {method: "prop", alpha: 0.20, f: 18, phi: 16, gw: 0.75, sm: 0.5},
+  comp:      {method: "comp", alpha: 0.50, f: 18, phi: 16, gw: 1.5, sm: 1.0},
+};
+// f and phi sliders are in steps of pi/12
+const state = {view: "color", ds: null, datasets: [], win: {L: 0.5, W: 1}, zoom: 1, center: null, viewBox: null, minFrag: 0, showL: false};
+const ctrl = {method: $("method"), alpha: $("alpha"), f: $("f"), phi: $("phi"), gw: $("gw"), sm: $("sm")};
+const piLabel = k => { if (k === 0) return "0"; const g = (a, b) => b ? g(b, a % b) : a, d = g(k, 12), num = k / d, den = 12 / d;
+  return (num === 1 ? "" : num) + "π" + (den === 1 ? "" : "/" + den); };
+function params(){ return {method: ctrl.method.value, alpha: +ctrl.alpha.value, f: +ctrl.f.value * PI / 12, phi: +ctrl.phi.value * PI / 12, gw: +ctrl.gw.value, sm: +ctrl.sm.value}; }
+function applyPreset(name){ const p = PRESETS[name]; for (const k of Object.keys(p)) ctrl[k].value = p[k];
+  document.querySelectorAll("[data-preset]").forEach(b => b.setAttribute("aria-pressed", b.dataset.preset === name ? "true" : "false")); update(true); }
+function syncLabels(){
+  $("o-alpha").textContent = (+ctrl.alpha.value).toFixed(2); $("o-f").textContent = piLabel(+ctrl.f.value);
+  $("o-phi").textContent = piLabel(+ctrl.phi.value); $("o-gw").textContent = (+ctrl.gw.value).toFixed(2); $("o-sm").textContent = (+ctrl.sm.value).toFixed(1) + " px";
+  const m = ctrl.method.value, uses = {gray: [], prop: ["alpha", "f", "phi", "gw", "sm"], comp: ["alpha", "f", "phi", "gw", "sm"], heat: ["alpha", "gw", "sm"], fcos: ["alpha", "f", "phi", "gw", "sm"]}[m];
+  for (const k of ["alpha", "f", "phi", "gw", "sm"]) { const on = uses.includes(k); $("c-" + k).classList.toggle("off", !on); ctrl[k].disabled = !on; }
+  $("alpha-lab").textContent = (m === "heat" || m === "fcos") ? "Strength s" : "Strength α";
+}
+
+/* ---------- drawing ---------- */
+const img = $("img"), ictx = img.getContext("2d");
+const off = document.createElement("canvas"), octx = off.getContext("2d");
+function drawImage(ds, rgb){
+  const z = state.zoom, W = ds.w * z, H = ds.h * z;
+  if (img.width !== W || img.height !== H) { img.width = W; img.height = H; }
+  img.style.aspectRatio = ds.w + " / " + ds.h;
+  if (off.width !== ds.w || off.height !== ds.h) { off.width = ds.w; off.height = ds.h; }
+  const I = winI(ds), id = octx.createImageData(ds.w, ds.h), d = id.data, n = ds.w * ds.h;
+  const cxp = state.center ? state.center[0] : ds.w / 2, vw = ds.w / z, sx = Math.min(ds.w - vw, Math.max(0, cxp - vw / 2));
+  const splitX = sx + vw / 2;
+  for (let i = 0; i < n; i++) {
+    const x = i % ds.w, gray = state.view === "gray" || (state.view === "split" && x < splitX);
+    const r = gray ? I[i] : rgb[3 * i], g = gray ? I[i] : rgb[3 * i + 1], b = gray ? I[i] : rgb[3 * i + 2];
+    d[4 * i] = r * 255 + 0.5; d[4 * i + 1] = g * 255 + 0.5; d[4 * i + 2] = b * 255 + 0.5; d[4 * i + 3] = 255; }
+  if (state.showL && ds.Ledge) for (let i = 0; i < n; i++) if (ds.Ledge[i]) { d[4 * i] = 255; d[4 * i + 1] = 214; d[4 * i + 2] = 0; }
+  octx.putImageData(id, 0, 0);
+  const vh = ds.h / z, cyp = state.center ? state.center[1] : ds.h / 2, sy = Math.min(ds.h - vh, Math.max(0, cyp - vh / 2));
+  ictx.imageSmoothingEnabled = false;
+  ictx.drawImage(off, sx, sy, vw, vh, 0, 0, W, H);
+  if (state.view === "split") { ictx.fillStyle = "rgba(255,255,255,.55)"; ictx.fillRect(Math.floor(W / 2), 0, Math.max(1, z / 2), H); }
+  state.viewBox = [sx, sy, vw, vh];
+  if (state.mark) { const mx = (state.mark[0] - sx) / vw * W, my = (state.mark[1] - sy) / vh * H;
+    ictx.lineWidth = Math.max(2, W / 220); ictx.strokeStyle = "#ffd600"; ictx.beginPath(); ictx.arc(mx, my, W / 28, 0, 2 * PI); ictx.stroke();
+    ictx.beginPath(); ictx.moveTo(mx - W / 18, my); ictx.lineTo(mx - W / 40, my); ictx.moveTo(mx + W / 40, my); ictx.lineTo(mx + W / 18, my);
+    ictx.moveTo(mx, my - W / 18); ictx.lineTo(mx, my - W / 40); ictx.moveTo(mx, my + W / 40); ictx.lineTo(mx, my + W / 18); ictx.stroke(); }
+}
+function setupPlot(cv){ const dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.clientWidth || 560, H = Math.round(W * 0.41);
+  if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; } const c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, H); return [c, W, H]; }
+function axes(c, W, H, L, Rr, T, B, xt, yt, xl, yl){
+  const ink = css("--muted"), line = css("--line");
+  c.strokeStyle = line; c.lineWidth = 1; c.fillStyle = ink; c.font = "11px " + css("--f-mono");
+  for (const t of yt) { const y = T + (B - T) * (1 - (t.v - yt.lo) / (yt.hi - yt.lo)); c.beginPath(); c.moveTo(L, y); c.lineTo(Rr, y); c.stroke(); c.textAlign = "right"; c.textBaseline = "middle"; c.fillText(t.l, L - 5, y); }
+  for (const t of xt) { const x = L + (Rr - L) * (t.v - xt.lo) / (xt.hi - xt.lo); c.textAlign = "center"; c.textBaseline = "top"; c.fillText(t.l, x, B + 5); }
+  c.font = "11px " + css("--f-body"); c.textAlign = "center"; c.fillText(xl, (L + Rr) / 2, H - 13);
+  c.save(); c.translate(11, (T + B) / 2); c.rotate(-PI / 2); c.textBaseline = "middle"; c.fillText(yl, 0, 0); c.restore();
+}
+function drawCurve(p){
+  const [c, W, H] = setupPlot($("curve")), L = 46, Rr = W - 12, T = 10, B = H - 58, band = 12;
+  const isCos = p.method === "prop" || p.method === "comp";
+  $("curve-title").textContent = isCos ? "Hue vs vesselness" : p.method === "gray" ? "Grayscale" : "Map vs intensity";
+  const xt = [0, .25, .5, .75, 1].map(v => ({v, l: v.toFixed(2)})); xt.lo = 0; xt.hi = 1;
+  const yt = [-1, -.5, 0, .5, 1].map(v => ({v, l: v.toFixed(1)})); yt.lo = -1; yt.hi = 1;
+  axes(c, W, H, L, Rr, T, B, xt, yt, isCos ? "normalized vesselness S̃" : "normalized intensity I", isCos ? "chroma c̃ⱼ" : "C − I");
+  const X = t => L + (Rr - L) * t, Yp = v => T + (B - T) * (1 - (v + 1) / 2), th = [0, p.phi / 2, p.phi], cols = [css("--r"), css("--g"), css("--b")];
+  const ch = (t, j) => { if (isCos) { const cs = th.map(o => Math.cos(2 * p.f * t + o)), m = (cs[0] + cs[1] + cs[2]) / 3; return cs[j] - m; }
+    if (p.method === "heat") return heat(t)[j] - t; if (p.method === "fcos") return 0.5 + 0.5 * Math.cos(2 * p.f * t + th[j]) - t; return 0; };
+  for (let j = 0; j < 3; j++) { c.strokeStyle = cols[j]; c.lineWidth = 2; c.beginPath();
+    for (let k = 0; k <= 200; k++) { const t = k / 200, x = X(t), y = Yp(ch(t, j)); k ? c.lineTo(x, y) : c.moveTo(x, y); } c.stroke(); }
+  if (isCos || p.method === "heat" || p.method === "fcos") {
+    c.setLineDash([5, 4]); c.strokeStyle = css("--ink"); c.lineWidth = 1.5; c.beginPath();
+    for (let k = 0; k <= 200; k++) { const t = k / 200, y = Yp(2 * Math.pow(t, p.gw) - 1); k ? c.lineTo(X(t), y) : c.moveTo(X(t), y); } c.stroke(); c.setLineDash([]); }
+  // resulting color band at I = 0.65, W = S^gw (before blur)
+  const by = B + 22;
+  for (let k = 0; k < 200; k++) { const t = (k + 0.5) / 200, v = isCos ? 0.65 : t, wv = isCos ? Math.pow(t, p.gw) : 1;
+    const a = p.alpha * wv, r = Math.min(1, Math.max(0, v + a * ch(t, 0) * (isCos ? 1 : 1))), g = Math.min(1, Math.max(0, v + a * ch(t, 1))), b = Math.min(1, Math.max(0, v + a * ch(t, 2)));
+    c.fillStyle = `rgb(${r * 255 | 0},${g * 255 | 0},${b * 255 | 0})`; c.fillRect(X(t / 1) - (Rr - L) / 400, by, (Rr - L) / 200 + 1, band); }
+  c.strokeStyle = css("--line"); c.strokeRect(L, by, Rr - L, band);
+  $("curve-hint").textContent = isCos
+    ? "Red, green and blue lines: the mean-centered cosine channels. Dashed: the soft weight Sⁿ with n = γw, rescaled to the same axis. The band shows the color added to a bright vessel (I = 0.65) along the vesselness scale, from blob-like or faint structures (left) to strongly tubular vessels (right)."
+    : p.method === "gray" ? "Grayscale adds no color." : "Lines: how far each channel of the map departs from the gray value at each intensity. Dashed: the soft weight. The band shows the restricted map at full weight.";
+}
+function drawTrade(ds, p, cur){
+  const [c, W, H] = setupPlot($("trade")), L = 46, Rr = W - 12, T = 10, B = H - 38;
+  const pts = [];
+  if (p.method !== "gray") for (let k = 0; k <= 20; k++) { const a = k / 20; pts.push({a, ...metrics(ds, colorize(ds, p, a))}); }
+  const xmax = Math.max(0.02, ...pts.map(q => q.inv), cur.inv) * 1.12, ymin = Math.min(ds.base.dprime, ...pts.map(q => q.dprime)) * 0.9, ymax = Math.max(ds.base.dprime * 1.2, ...pts.map(q => q.dprime), cur.dprime) * 1.06;
+  const nice = (lo, hi, n) => { const s = Math.pow(10, Math.floor(Math.log10((hi - lo) / n))), st = [1, 2, 5, 10].map(m => m * s).find(m => (hi - lo) / m <= n) || s * 10; const out = []; for (let v = Math.ceil(lo / st) * st; v <= hi + 1e-12; v += st) out.push(+v.toFixed(6)); return out; };
+  const xt = nice(0, xmax, 5).map(v => ({v, l: (v * 100).toFixed(v * 100 < 1 && v > 0 ? 1 : 0) + "%"})); xt.lo = 0; xt.hi = xmax;
+  const yt = nice(ymin, ymax, 4).map(v => ({v, l: v.toFixed(2)})); yt.lo = ymin; yt.hi = ymax;
+  axes(c, W, H, L, Rr, T, B, xt, yt, "vessel order inversion", "ΔE d′");
+  const X = v => L + (Rr - L) * v / xmax, Y = v => T + (B - T) * (1 - (v - ymin) / (ymax - ymin));
+  c.strokeStyle = css("--accent"); c.lineWidth = 1.5; c.beginPath(); pts.forEach((q, k) => k ? c.lineTo(X(q.inv), Y(q.dprime)) : c.moveTo(X(q.inv), Y(q.dprime))); c.stroke();
+  c.fillStyle = css("--accent"); for (const q of pts) { c.beginPath(); c.arc(X(q.inv), Y(q.dprime), 2.4, 0, 2 * PI); c.fill(); }
+  c.fillStyle = css("--muted"); c.beginPath(); c.arc(X(0), Y(ds.base.dprime), 4, 0, 2 * PI); c.fill();
+  c.font = "11px " + css("--f-body"); c.textAlign = "left"; c.textBaseline = "bottom"; c.fillText("grayscale", X(0) + 6, Y(ds.base.dprime) - 2);
+  if (p.method !== "gray") { c.strokeStyle = css("--ink"); c.lineWidth = 2; c.beginPath(); c.arc(X(cur.inv), Y(cur.dprime), 6, 0, 2 * PI); c.stroke();
+    c.fillStyle = css("--ink"); c.textBaseline = "top"; c.fillText((p.method === "heat" || p.method === "fcos" ? "s" : "α") + " = " + p.alpha.toFixed(2), Math.min(X(cur.inv) + 9, Rr - 60), Y(cur.dprime) + 4); }
+}
+function renderMetrics(ds, m){
+  const b = ds.base, pct = v => (v * 100).toFixed(1) + "%";
+  const rows = [
+    ["ΔE d′", m.dprime.toFixed(3), "grayscale " + b.dprime.toFixed(3), m.dprime > b.dprime + 0.005 ? "good" : ""],
+    ["Vessel order inversion", pct(m.inv), "grayscale 0.0%", m.inv > 0.04 ? "warn" : ""],
+    ["Local contrast", m.contrast.toFixed(3), "grayscale " + b.contrast.toFixed(3), m.contrast < b.contrast - 0.005 ? "warn" : ""],
+    ["Visible color (C* > 2.3)", pct(m.vis), "mean vessel C* " + m.chroma.toFixed(1), m.vis > 0.5 ? "good" : ""],
+    ["Clipped vessel voxels", pct(m.clip), "grayscale " + pct(b.clip), ""],
+  ];
+  $("metrics").innerHTML = rows.map(r => `<div class="metric ${r[3]}"><span class="label">${r[0]}</span><span class="v">${r[1]}</span><span class="d">${r[2]}</span></div>`).join("");
+}
+
+/* ---------- update loop ---------- */
+let raf = 0, tradeTimer = 0, lastRGB = null;
+function update(full){
+  syncLabels();
+  if (raf) cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(() => {
+    const ds = state.ds, p = params();
+    winI(ds); if (!ds.base) ds.base = metrics(ds, colorize(ds, {method: "gray"}));
+    lastRGB = colorize(ds, p);
+    drawImage(ds, lastRGB);
+    const m = metrics(ds, lastRGB);
+    renderMetrics(ds, m); drawCurve(p);
+    clearTimeout(tradeTimer); tradeTimer = setTimeout(() => drawTrade(ds, p, m), full ? 0 : 120);
+  });
+}
+function setDataset(k){ state.ds = state.datasets[k]; state.center = null;
+  if (state.ds.prepFrag !== state.minFrag) prepare(state.ds);
+  $("showL").disabled = !state.ds.L; $("showL").parentElement.classList.toggle("off", !state.ds.L); $("dsinfo").innerHTML = `<b>${state.ds.name}</b> · ${state.ds.w}×${state.ds.h} px · ${state.ds.vessel.length} vessel px · ${state.ds.ring.length} ring px`; update(true); }
+function refreshDatasetList(sel){ $("dataset").innerHTML = state.datasets.map((d, k) => `<option value="${k}">${d.name}</option>`).join(""); $("dataset").value = String(sel); setDataset(sel); }
+
+/* ---------- loading exported PNG slices ---------- */
+async function readPNG(file){ const bmp = await createImageBitmap(file), cv = document.createElement("canvas"); cv.width = bmp.width; cv.height = bmp.height;
+  const c = cv.getContext("2d"); c.drawImage(bmp, 0, 0); const d = c.getImageData(0, 0, bmp.width, bmp.height).data, a = new Float32Array(bmp.width * bmp.height);
+  for (let i = 0; i < a.length; i++) a[i] = d[4 * i] / 255; return {w: bmp.width, h: bmp.height, a}; }
+$("files").addEventListener("change", async e => {
+  const groups = new Map();
+  for (const f of e.target.files) { const m = f.name.match(/^(?:[0-9a-f]{8}-)?(.*)_([ISML])\.png$/i); if (!m) continue;
+    if (!groups.has(m[1])) groups.set(m[1], {}); groups.get(m[1])[m[2].toUpperCase()] = f; }
+  const first = state.datasets.length; let added = 0, skipped = [];
+  for (const [key, g] of [...groups.entries()].sort()) {
+    if (!(g.I && g.S && g.M)) { skipped.push(key); continue; }
+    const [I, S, M, Lr] = await Promise.all([readPNG(g.I), readPNG(g.S), readPNG(g.M), g.L ? readPNG(g.L) : null]);
+    if (I.w !== S.w || I.w !== M.w || I.h !== S.h || I.h !== M.h) { skipped.push(key); continue; }
+    const Mm = new Uint8Array(I.a.length); for (let i = 0; i < Mm.length; i++) Mm[i] = M.a[i] > 0.5 ? 1 : 0;
+    state.datasets.push(prepare({name: key === "mip" ? "Maximum-intensity projection (whole head)" : key === "slabmip" ? "Slab MIP, brain only" : key === "ane_slice" ? "Aneurysm case: slice through the aneurysm" : key === "ane_slab" ? "Aneurysm case: thin slab MIP" : "Slice " + key.replace(/^z0*/, ""), w: I.w, h: I.h, I: I.a, S: S.a, M: Mm, L: Lr ? (() => { const l = new Uint8Array(Lr.a.length); for (let i = 0; i < l.length; i++) l[i] = Lr.a[i] > 0.5 ? 1 : 0; return l; })() : null})); added++;
+  }
+  if (added) refreshDatasetList(first);
+  $("dsinfo").innerHTML += added ? "" : ` · <b>No complete slice found</b> (need _I, _S and _M PNGs${skipped.length ? "; incomplete: " + skipped.join(", ") : ""})`;
+});
+
+/* ---------- wiring ---------- */
+for (const k of Object.keys(ctrl)) ctrl[k].addEventListener("input", () => { document.querySelectorAll("[data-preset]").forEach(b => b.setAttribute("aria-pressed", "false")); update(false); });
+document.querySelectorAll("[data-preset]").forEach(b => b.addEventListener("click", () => applyPreset(b.dataset.preset)));
+$("dataset").addEventListener("change", e => setDataset(+e.target.value));
+for (const v of ["color", "split", "gray"]) $("v-" + v).addEventListener("click", () => { state.view = v;
+  for (const u of ["color", "split", "gray"]) $("v-" + u).setAttribute("aria-pressed", u === v ? "true" : "false"); if (state.ds && lastRGB) drawImage(state.ds, lastRGB); });
+function syncWin(){ state.win.L = +$("wl").value; state.win.W = +$("ww").value; $("o-wl").textContent = state.win.L.toFixed(2); $("o-ww").textContent = state.win.W.toFixed(2); }
+for (const id of ["wl", "ww"]) $(id).addEventListener("input", () => { syncWin(); update(false); });
+$("zoom").addEventListener("change", e => { state.zoom = +e.target.value; if (state.ds && lastRGB) drawImage(state.ds, lastRGB); });
+$("w-reset").addEventListener("click", () => { $("wl").value = 0.5; $("ww").value = 1; $("zoom").value = "1"; state.zoom = 1; state.center = null; syncWin(); update(true); });
+img.addEventListener("click", e => { const ds = state.ds, vb = state.viewBox; if (!ds || !vb) return; const r = img.getBoundingClientRect();
+  if (state.study && state.study.marking) { state.mark = [vb[0] + (e.clientX - r.left) / r.width * vb[2], vb[1] + (e.clientY - r.top) / r.height * vb[3]]; drawImage(ds, lastRGB); state.study.onMark?.(); return; }
+  if (state.study) return;
+  state.center = [vb[0] + (e.clientX - r.left) / r.width * vb[2], vb[1] + (e.clientY - r.top) / r.height * vb[3]];
+  if (state.zoom === 1) { state.zoom = 2; $("zoom").value = "2"; } drawImage(ds, lastRGB); });
+syncWin();
+const syncFrag = () => { state.minFrag = +$("minfrag").value; $("o-minfrag").textContent = state.minFrag ? state.minFrag + " px" : "off"; };
+$("minfrag").addEventListener("input", () => { syncFrag(); });
+$("minfrag").addEventListener("change", () => { syncFrag(); const ds = state.ds; prepare(ds); setDataset(state.datasets.indexOf(ds)); });
+$("showL").addEventListener("change", e => { state.showL = e.target.checked; if (state.ds && lastRGB) drawImage(state.ds, lastRGB); });
+syncFrag();
+let rz = 0; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => update(true), 150); });
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => update(true));
+new MutationObserver(() => update(true)).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+
+/* ---------- user study (task mode) ---------- */
+const STUDY_VERSION = 1;
+const SUS = ["I think that I would like to use this system frequently.", "I found the system unnecessarily complex.",
+  "I thought the system was easy to use.", "I think that I would need the support of a technical person to be able to use this system.",
+  "I found the various functions in this system were well integrated.", "I thought there was too much inconsistency in this system.",
+  "I would imagine that most people would learn to use this system very quickly.", "I found the system very cumbersome to use.",
+  "I felt very confident using the system.", "I needed to learn a lot of things before I could get going with this system."];
+const CUSTOM = ["The color made vessels easier to distinguish from the surrounding tissue.", "The color helped me notice structures I might miss in grayscale.",
+  "The color was distracting.", "I understood what the color represents.", "I would want a color option like this in an MRA viewer."];
+const IMG = {vis: ["slice 92", "slice 65"], tune: "slice 92", find: ["typical aneurysm (~6 mm): thin slab MIP", "giant aneurysm (~24 mm): thin slab MIP"]};
+const findDs = part => state.datasets.findIndex(d => d.name.includes(part));
+/* SUBMIT_URL: paste the web-app URL of your Google Apps Script here (see README). Leave "" to use downloads only. */
+const SUBMIT_URL = "";
+let saveChain = Promise.resolve(), saveStatus = "";
+
+function shuffle(a, r){ for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function buildScreens(seed){
+  const r = rng(seed), sc = [{t: "welcome"}, {t: "background"}];
+  for (const img of shuffle(IMG.vis.slice(), r)) {
+    const order = r() < 0.5 ? ["gray", "color"] : ["color", "gray"];
+    order.forEach((cond, k) => sc.push({t: "rate", img, cond, k}));
+    sc.push({t: "pref", img});
+  }
+  sc.push({t: "tune", img: IMG.tune});
+  const conds = r() < 0.5 ? ["gray", "color"] : ["color", "gray"];
+  shuffle(IMG.find.slice(), r).forEach((img, k) => sc.push({t: "find", img, cond: conds[k]}));
+  sc.push({t: "likert", key: "sus", items: SUS, title: "About the tool"}, {t: "likert", key: "custom", items: CUSTOM, title: "About the color"}, {t: "open"}, {t: "done"});
+  return sc;
+}
+function densest(ds){
+  if (ds._dense) return ds._dense; const win = Math.round(Math.min(ds.w, ds.h) / 2); let best = [-1, ds.w / 2, ds.h / 2];
+  for (let y0 = 0; y0 + win <= ds.h; y0 += 8) for (let x0 = 0; x0 + win <= ds.w; x0 += 8) { let c = 0;
+    for (let y = y0; y < y0 + win; y += 2) for (let x = x0; x < x0 + win; x += 2) c += ds.M[y * ds.w + x];
+    if (c > best[0]) best = [c, x0 + win / 2, y0 + win / 2]; }
+  return (ds._dense = [best[1], best[2]]);
+}
+function viewFor(imgPart, cond, params, zoom = 1){
+  const k = findDs(imgPart); if (k < 0) return false;
+  state.zoom = zoom; state.center = zoom > 1 ? densest(state.datasets[k]) : null; state.mark = null; state.showL = false;
+  $("wl").value = 0.6; $("ww").value = 1.4; syncWin();
+  const p = params || PRESETS.tuned; for (const key of Object.keys(p)) ctrl[key].value = p[key];
+  state.view = cond === "gray" ? "gray" : cond === "split" ? "split" : "color";
+  $("dataset").value = String(k); setDataset(k); return true;
+}
+function scale(name, lo = "Strongly disagree", hi = "Strongly agree"){
+  return `<div class="scale" role="radiogroup">${[1, 2, 3, 4, 5].map(v => `<label><input type="radio" name="${name}" value="${v}">${v}</label>`).join("")}</div><div class="scale-ends"><span>${lo}</span><span>${hi}</span></div>`;
+}
+function opts(name, list){ return `<div class="opts">${list.map(o => `<label><input type="radio" name="${name}" value="${o}"> ${o}</label>`).join("")}</div>`; }
+const val = name => document.querySelector(`#st-body input[name="${name}"]:checked`)?.value ?? null;
+function gate(btn, names){ const ok = () => { btn.disabled = !names.every(n => val(n) !== null); }; $("st-body").onchange = ok; ok(); }
+
+function save(){
+  const S = state.study; if (!S || !S.data.completedAt || S.sent) { saveStatus = saveStatus || "local"; return; }
+  S.sent = true;
+  if (!SUBMIT_URL) { saveStatus = "local"; return; }
+  const body = JSON.stringify({flat: flatten(S.data), raw: S.data});
+  saveChain = fetch(SUBMIT_URL, {method: "POST", mode: "no-cors", headers: {"Content-Type": "text/plain;charset=utf-8"}, body})
+    .then(() => { saveStatus = "saved"; }, () => { saveStatus = "failed"; });
+}
+function csvOf(rows){
+  const cols = [...new Set(rows.flatMap(r => Object.keys(r)))], q = v => { const t = v == null ? "" : String(v); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  return [cols.join(","), ...rows.map(r => cols.map(c => q(r[c])).join(","))].join("\n");
+}
+function flatten(d){
+  const o = {participant: d.code, started: d.startedAt, completed: d.completedAt || "", ...Object.fromEntries(Object.entries(d.background || {}).map(([k, v]) => ["bg_" + k, v]))};
+  for (const r of d.ratings || []) { o[`rate_${r.img}_${r.cond}`] = r.rating; o[`rate_${r.img}_${r.cond}_ms`] = r.ms; o[`rate_${r.img}_${r.cond}_shown`] = r.position; }
+  for (const p of d.prefs || []) o[`pref_${p.img}`] = p.choice;
+  if (d.tune) Object.assign(o, {tune_alpha: d.tune.alpha, tune_gw: d.tune.gw, tune_ms: d.tune.ms, tune_dE: d.tune.dprime, tune_inv: d.tune.inv, tune_contrast: d.tune.contrast});
+  for (const f of d.find || []) { const k = f.img.includes("giant") ? "giant" : "typical"; Object.assign(o, {[`find_${k}_cond`]: f.cond, [`find_${k}_hit`]: f.hit, [`find_${k}_none`]: f.none, [`find_${k}_ms`]: f.ms, [`find_${k}_conf`]: f.conf}); }
+  (d.sus || []).forEach((v, i) => o[`sus${i + 1}`] = v); if (d.susScore != null) o.sus_score = d.susScore;
+  (d.custom || []).forEach((v, i) => o[`custom${i + 1}`] = v);
+  for (const [k, v] of Object.entries(d.open || {})) o["open_" + k] = v;
+  return o;
+}
+async function offerFile(name, text, statusEl){
+  try { const url = URL.createObjectURL(new Blob([text], {type: name.endsWith(".csv") ? "text/csv" : "application/json"}));
+    const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000); statusEl.textContent = "Downloaded " + name + "."; }
+  catch (e) { statusEl.textContent = "Download failed. Select the text below and copy it."; const ta = document.createElement("textarea"); ta.value = text; ta.readOnly = true; statusEl.after(ta); }
+}
+
+const imgNo = sc => { const S = state.study, seen = []; for (const x of S.screens) { if (x.t === "pref" || x.t === "rate") { if (!seen.includes(x.img)) seen.push(x.img); } } return seen.indexOf(sc.img) + 1; };
+function renderStudy(){
+  const S = state.study, sc = S.screens[S.i], body = $("st-body"), t0 = performance.now();
+  const visible = S.screens.filter(x => !["welcome", "done"].includes(x.t)).length, done = S.screens.slice(0, S.i).filter(x => !["welcome", "done"].includes(x.t)).length;
+  $("st-progress").textContent = sc.t === "welcome" ? "User study" : sc.t === "done" ? "Finished" : `Step ${done + 1} of ${visible}`;
+  S.marking = false; S.onMark = null; state.mark = null;
+  const next = () => { S.i++; save(); renderStudy(); window.scrollTo({top: 0}); };
+
+  if (sc.t === "welcome") {
+    viewFor(IMG.vis[0], "color");
+    body.innerHTML = `<h3>MRA colorization: user study</h3>
+      <p>This study asks how a color display of brain MR angiography (MRA) compares with grayscale. It takes about 10–15 minutes: you rate a few images, adjust one setting, look for an aneurysm in two images, and answer short questionnaires.</p>
+      <p>This is a research prototype, not a diagnostic tool. Your answers are anonymous: we store only the participant code below and your answers. You can stop at any time.</p>
+      <div class="q"><span>Participant code</span><input type="text" id="st-code" maxlength="20" autocomplete="off"><span class="note">Use the code you were given, or keep this one.</span></div>
+      <label class="opts"><label><input type="checkbox" id="st-consent"> I have read the information above and agree to take part.</label></label>
+      <button class="primary" id="st-go" disabled>Start</button>
+`;
+    $("st-code").value = S.data.code;
+    $("st-consent").addEventListener("change", e => { $("st-go").disabled = !e.target.checked; });
+    $("st-go").addEventListener("click", async () => {
+      const code = $("st-code").value.trim().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 20) || S.data.code;
+      S.data.code = code; S.data.consent = true; S.data.startedAt = new Date().toISOString();
+      next();
+    });
+    return;
+  }
+  if (sc.t === "background") {
+    body.innerHTML = `<h3>About you</h3>
+      <div class="q"><span>Your role</span>${opts("role", ["Radiologist", "Other clinician", "Researcher", "Student", "Engineer", "Other"])}</div>
+      <div class="q"><span>Experience reading MRA or CT angiography</span>${opts("exp", ["None", "Under 2 years", "2–5 years", "Over 5 years"])}</div>
+      <div class="q"><span>Do you have a color-vision deficiency?</span>${opts("cvd", ["No", "Yes", "Don't know"])}</div>
+      <button class="primary" id="st-next">Continue</button>`;
+    gate($("st-next"), ["role", "exp", "cvd"]);
+    $("st-next").addEventListener("click", () => { S.data.background = {role: val("role"), experience: val("exp"), cvd: val("cvd")}; next(); });
+    return;
+  }
+  if (sc.t === "rate") {
+    viewFor(sc.img, sc.cond, null, 2);
+    body.innerHTML = `<h3>Image ${imgNo(sc)}, view ${sc.k + 1} of 2</h3>
+      <p>Look at the image for as long as you need. It is shown at 2× zoom.</p>
+      <div class="q"><span>In this view, vessels are easy to distinguish from the surrounding tissue.</span>${scale("r")}</div>
+      <button class="primary" id="st-next">Continue</button>`;
+    gate($("st-next"), ["r"]);
+    $("st-next").addEventListener("click", () => { (S.data.ratings ||= []).push({img: sc.img, cond: sc.cond, position: sc.k + 1, rating: +val("r"), ms: Math.round(performance.now() - t0)}); next(); });
+    return;
+  }
+  if (sc.t === "pref") {
+    viewFor(sc.img, "gray", null, 2);
+    body.innerHTML = `<h3>Image ${imgNo(sc)}: compare both views</h3>
+      <p>Switch between the two views as often as you like.</p>
+      <div class="seg" role="group" aria-label="Compare views" style="align-self:flex-start;border-color:var(--line)"><button class="chip" id="st-vg" aria-pressed="true">Grayscale</button><button class="chip" id="st-vc" aria-pressed="false">Color</button></div>
+      <div class="q"><span>Which view made the vessels easier to see?</span>${opts("p", ["Grayscale", "Color", "No preference"])}</div>
+      <button class="primary" id="st-next">Continue</button>`;
+    let flips = 0; const setV = v => { state.view = v; $("st-vg").setAttribute("aria-pressed", v === "gray"); $("st-vc").setAttribute("aria-pressed", v === "color"); drawImage(state.ds, lastRGB); flips++; };
+    $("st-vg").addEventListener("click", () => setV("gray")); $("st-vc").addEventListener("click", () => setV("color"));
+    gate($("st-next"), ["p"]);
+    $("st-next").addEventListener("click", () => { (S.data.prefs ||= []).push({img: sc.img, choice: val("p"), switches: flips, ms: Math.round(performance.now() - t0)}); next(); });
+    return;
+  }
+  if (sc.t === "tune") {
+    viewFor(sc.img, "color", Object.assign({}, PRESETS.tuned, {alpha: 0}), 2);
+    body.innerHTML = `<h3>Choose the amount of color</h3>
+      <p>Move the sliders until the small vessels are easiest to tell apart from the tissue, without the image looking distorted. Then press Done.</p>
+      <div class="ctl"><div class="row"><label class="label" for="st-a">Amount of color</label><output id="st-ao">0.00</output></div><input type="range" id="st-a" min="0" max="1" step="0.01" value="0"></div>
+      <div class="ctl"><div class="row"><label class="label" for="st-g">Spread into small vessels</label><output id="st-go2">less</output></div><input type="range" id="st-g" min="0.5" max="2" step="0.05" value="1.5" style="direction:rtl" aria-describedby="st-gnote"></div>
+      <span class="note" id="st-gnote">The second slider sets how far color reaches into weaker, smaller vessels (weight exponent γw; right = more spread).</span>
+      <button class="primary" id="st-next">Done</button>`;
+    const sync = () => { ctrl.alpha.value = $("st-a").value; ctrl.gw.value = $("st-g").value; $("st-ao").textContent = (+$("st-a").value).toFixed(2);
+      $("st-go2").textContent = "γw " + (+$("st-g").value).toFixed(2); update(false); };
+    $("st-a").addEventListener("input", sync); $("st-g").addEventListener("input", sync);
+    $("st-next").addEventListener("click", () => { const p = params(), m = metrics(state.ds, colorize(state.ds, p));
+      S.data.tune = {alpha: p.alpha, gw: p.gw, ms: Math.round(performance.now() - t0), dprime: +m.dprime.toFixed(4), inv: +m.inv.toFixed(4), contrast: +m.contrast.toFixed(4)}; next(); });
+    return;
+  }
+  if (sc.t === "find") {
+    viewFor(sc.img, sc.cond);
+    const n = S.screens.filter(x => x.t === "find").indexOf(sc) + 1;
+    body.innerHTML = `<h3>Find the aneurysm (${n} of 2)</h3>
+      <p>This image may contain an intracranial aneurysm. Click on the image where you think it is, then confirm. If you cannot find one, say so.</p>
+      <div class="row-btns"><button class="primary" id="st-mark" disabled>Confirm location</button><button class="chip" id="st-none" type="button">I cannot find one</button></div>
+      <div class="q" id="st-confq" hidden><span>How confident are you?</span>${scale("c", "Not at all", "Very")}<button class="primary" id="st-next" disabled>Continue</button></div>`;
+    let rec = null; S.marking = true; S.onMark = () => { $("st-mark").disabled = false; };
+    const finish = none => { S.marking = false;
+      const ds = state.ds, L = ds.L, m = state.mark;
+      let hit = false; if (!none && L && m) { const x0 = Math.round(m[0]), y0 = Math.round(m[1]), R = 6;
+        for (let dy = -R; dy <= R && !hit; dy++) for (let dx = -R; dx <= R; dx++) { const x = x0 + dx, y = y0 + dy; if (x >= 0 && y >= 0 && x < ds.w && y < ds.h && dx * dx + dy * dy <= R * R && L[y * ds.w + x]) { hit = true; break; } } }
+      rec = {img: sc.img, cond: sc.cond, none, x: m && !none ? Math.round(m[0]) : null, y: m && !none ? Math.round(m[1]) : null, hit, ms: Math.round(performance.now() - t0)};
+      $("st-mark").disabled = true; $("st-none").disabled = true; $("st-confq").hidden = false; gate($("st-next"), ["c"]); };
+    $("st-mark").addEventListener("click", () => finish(false)); $("st-none").addEventListener("click", () => finish(true));
+    $("st-confq").addEventListener("click", e => { if (e.target.id === "st-next") { rec.conf = +val("c"); (S.data.find ||= []).push(rec); next(); } });
+    return;
+  }
+  if (sc.t === "likert") {
+    viewFor(IMG.vis[0], "color", null, 2);
+    body.innerHTML = `<h3>${sc.title}</h3><p>Rate each statement from 1 (strongly disagree) to 5 (strongly agree).</p>` +
+      sc.items.map((it, i) => `<div class="q"><span>${i + 1}. ${it}</span>${scale(sc.key + i)}</div>`).join("") + `<button class="primary" id="st-next">Continue</button>`;
+    gate($("st-next"), sc.items.map((_, i) => sc.key + i));
+    $("st-next").addEventListener("click", () => { const v = sc.items.map((_, i) => +val(sc.key + i)); S.data[sc.key] = v;
+      if (sc.key === "sus") S.data.susScore = 2.5 * v.reduce((a, x, i) => a + (i % 2 === 0 ? x - 1 : 5 - x), 0); next(); });
+    return;
+  }
+  if (sc.t === "open") {
+    body.innerHTML = `<h3>Your comments</h3>
+      <div class="q"><label for="st-o1">What was most useful?</label><textarea id="st-o1" maxlength="1500"></textarea></div>
+      <div class="q"><label for="st-o2">What was confusing or missing?</label><textarea id="st-o2" maxlength="1500"></textarea></div>
+      <div class="q"><label for="st-o3">In which clinical situations, if any, could a color display like this help?</label><textarea id="st-o3" maxlength="1500"></textarea></div>
+      <button class="primary" id="st-next">Finish</button>`;
+    $("st-next").addEventListener("click", () => { S.data.open = {useful: $("st-o1").value.trim(), missing: $("st-o2").value.trim(), clinical: $("st-o3").value.trim()};
+      S.data.completedAt = new Date().toISOString(); next(); });
+    return;
+  }
+  if (sc.t === "done") {
+    body.innerHTML = `<h3>Thank you</h3><p id="st-saved">Saving your answers…</p>
+      <p class="note">If the researcher asked you to send your answers by email, download them here and attach the file.</p>
+      <button class="chip" id="st-dl" type="button">Download my answers</button><span class="note" id="st-dl-status"></span>`;
+    saveChain.then(() => { $("st-saved").textContent = saveStatus === "saved" ? "Your answers have been sent. Thank you. You can close this page." :
+      saveStatus === "failed" ? "Your answers could not be sent. Please download them and send the file to the researcher." :
+      "Please download your answers and send the file to the researcher."; });
+    $("st-dl").addEventListener("click", () => offerFile(`mra-study-${state.study.data.code}.json`, JSON.stringify(state.study.data, null, 1), $("st-dl-status")));
+  }
+}
+function startStudy(){
+  const missing = [...IMG.vis, ...IMG.find].filter(p => findDs(p) < 0);
+  if (missing.length) { $("dsinfo").textContent = "The study images are still loading. Try again in a moment."; return; }
+  const seed = (Math.random() * 2 ** 31) | 0, code = "P-" + seed.toString(36).slice(-4).toUpperCase();
+  state.minFrag = 10; $("minfrag").value = 10; syncFrag();
+  state.study = {i: 0, seed, screens: buildScreens(seed), data: {v: STUDY_VERSION, code, seed, minFragPx: 10, window: [0.6, 1.4], tuned: PRESETS.tuned}};
+  state.study.data.order = state.study.screens.map(x => [x.t, x.img || "", x.cond || ""].filter(Boolean).join(":"));
+  document.body.classList.add("studying"); $("study").hidden = false; renderStudy(); window.scrollTo({top: 0});
+}
+function exitStudy(){
+  state.study = null; state.mark = null; document.body.classList.remove("studying"); $("study").hidden = true;
+  state.view = "color"; for (const u of ["color", "split", "gray"]) $("v-" + u).setAttribute("aria-pressed", u === "color" ? "true" : "false"); update(true);
+}
+$("study-open").addEventListener("click", startStudy);
+$("study-exit").addEventListener("click", exitStudy);
+
+state.datasets.push(prepare(makePhantom()));
+for (const k of Object.keys(PRESETS.tuned)) ctrl[k].value = PRESETS.tuned[k];
+$("p-tuned").setAttribute("aria-pressed", "true");
+refreshDatasetList(0);
+// built-in real examples: ICBM volume BG0006 (held-out), two axial slices exported from the benchmark pipeline
+(async () => {
+  const builtIn = [["bg0006_z092", "ICBM BG0006 (healthy), slice 92", false], ["bg0006_z065", "ICBM BG0006 (healthy), slice 65", false],
+    ["lau412_slice", "Lausanne, typical aneurysm (~6 mm): slice", true], ["lau412_slab", "Lausanne, typical aneurysm (~6 mm): thin slab MIP", true],
+    ["lau131_slice", "Lausanne, giant aneurysm (~24 mm): slice", true], ["lau131_slab", "Lausanne, giant aneurysm (~24 mm): thin slab MIP", true]];
+  let added = 0;
+  const bin = a => { const m = new Uint8Array(a.length); for (let i = 0; i < m.length; i++) m[i] = a[i] > 0.5 ? 1 : 0; return m; };
+  for (const [key, name, hasL] of builtIn) {
+    try {
+      const get = async s => { const r = await fetch(`data/${key}_${s}.png`); if (!r.ok) throw new Error(r.status); return readPNG(await r.blob()); };
+      const [I, S, M, L] = await Promise.all([get("I"), get("S"), get("M"), hasL ? get("L") : null]);
+      state.datasets.splice(1 + added, 0, prepare({name, w: I.w, h: I.h, I: I.a, S: S.a, M: bin(M.a), L: L ? bin(L.a) : null})); added++;
+    } catch (e) { /* examples unavailable: the phantom stays */ }
+  }
+  if (added) { $("wl").value = 0.6; $("ww").value = 1.4; syncWin(); refreshDatasetList(1); }
+})();
+})();
+</script>
+
+</body>
+</html>
