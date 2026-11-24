@@ -611,7 +611,7 @@ const CUSTOM = ["The color made vessels easier to distinguish from the surroundi
 const IMG = {vis: ["slice 92", "slice 65"], tune: "slice 92", find: ["typical aneurysm (~6 mm): thin slab MIP", "giant aneurysm (~24 mm): thin slab MIP"]};
 const findDs = part => state.datasets.findIndex(d => d.name.includes(part));
 /* SUBMIT_URL: paste the web-app URL of your Google Apps Script here (see README). Leave "" to use downloads only. */
-const SUBMIT_URL = "";
+const SUBMIT_URL = "https://script.google.com/macros/s/AKfycbxjn8V7OKwW6CtCuq5EcAeM4-XPhIxzzPeqnuBbEnzIGLd8LxDbPSeE1CYwXUDHy4BM1A/exec";
 let saveChain = Promise.resolve(), saveStatus = "";
 
 function shuffle(a, r){ for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
